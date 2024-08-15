@@ -1,0 +1,218 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% ORBC: Initialize structure array to store results
+Result_structure = struct('id', {}, 'incidence', {}, 'prevalence', {}, 'cumulative_duration', {}, 'mean_duration', {}, 'median_duration', {}, 'total_caps', {});
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% ORBC: Loop for loading files
+% Define specific input folder (REPLACE validated WITH DESIRED FOLDER NAME)
+validated = 'C:\Users\olive\OneDrive\Dokumenter\MATLAB\bessBeamCapStall-main\Stalls_T-serie_TPM3\Validated';
+
+% Get a list of all files in the folder = validates
+validates = dir(validated);
+
+% Loop through each file in folder
+for file_index = 1:length(validates)
+    % Exclude '.' and '..' directories
+    if ~validates(file_index).isdir
+        % Get the name of the ith file
+        analysis_file = validates(file_index).name;
+        %load the file
+        load(fullfile('C:\Users\olive\OneDrive\Dokumenter\MATLAB\bessBeamCapStall-main\Stalls_T-serie_TPM3\Validated', analysis_file));
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %% Original: Performing Bessel_stall_statistics on the i'th file
+        %Get verified stall points (after loadind results into workspace)
+        stallPts = GTStallingMatrix == 1;
+        caps_to_rem = [];
+        %Remove short segment from analysis
+        for i = 1:length(seg)
+           currSeg = seg(i);
+          if  size(currSeg.pos,1) <= 5
+            caps_to_rem = [caps_to_rem; i];
+          end
+        end
+        stallPts(caps_to_rem,:) = [];
+        total = size(stallPts,1);
+        stallPts = trimStallMatrix(double(stallPts),1);
+        doesStall = sum(stallPts) > 0;
+        doesStall = sum(stallPts,2) > 0;
+        stall = stallPts(doesStall,:);
+        stall((sum(stall,2)==0),:) = []; %Remove segments with no stalls marked
+        stallMat = stall;
+        figure
+        imagesc (stall), colormap (flipud(gray))
+        xlabel('Frame')
+        ylabel('Segment')
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %% ORBC: Add-on to save the first figure of Bessel_stall_statistics
+        figure_path1 = fullfile('C:\Users\olive\OneDrive\Dokumenter\MATLAB\bessBeamCapStall-main\Stalls_T-serie_TPM3\results\result_figures_1', [analysis_file(1:4) '_figure1.fig']);
+        saveas(gcf, figure_path1);
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %% Original: More Bessel_stall_statistics
+         %prompt='Enter total segment count:';
+         %total=input(prompt);              %Enter your total number of segments here
+         %stall=1-stall; %Correction for 1s and 0s so that 1s are stalls
+        incid=(size(stall,1)./total).*100;     %This is your stall incidence
+        prev=(mean(sum(stall,1)./total)).*100; %This is your stall point prevalence
+        cumulat=(mean(sum(stall,2)/size(stall,2))).*100;    %This is your cumulative stall duration
+        [allDurations,medDuration,meanDuration] = calculateStallDuration(stall);
+        medDur = mean(medDuration);
+        meanDur = mean(meanDuration);
+        incids = zeros(1,4);
+        prevs = zeros(1,4);
+        cumulats = zeros(1,4);
+        for  i = 2:5
+            stall = trimStallMatrix(double(stall),i);
+            stall((sum(stall,2)==0),:) = []; %Remove segments with no stalls marked
+            incids(i-1)=(size(stall,1)./total).*100;     %This is your stall incidence
+            prevs(i-1)=(mean(sum(stall,1)./total)).*100; %This is your stall point prevalence
+            cumulats(i-1)=(mean(sum(stall,2)/size(stall,2))).*100;    %This is your cumulative stall duration
+            
+        end
+        %%
+
+        % Plot the second figure
+        figure;
+        imagesc(stall), colormap(flipud(gray));
+        xlabel('Frame');
+        ylabel('Segment');
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %% ORBC: Add-on to save the second figure of Bessel_stall_statistics and close all figures of the i'th iteration
+        figure_path2 = fullfile('C:\Users\olive\OneDrive\Dokumenter\MATLAB\bessBeamCapStall-main\Stalls_T-serie_TPM3\results\result_figures_2', [analysis_file(1:4) '_figure2.fig']);
+        saveas(gcf, figure_path2);
+
+        % Close the ith figures after the ith iteration of analysis
+        close all;
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %% Original: More Bessel_stall_statistics
+        stallVTime = getIncidenceCurve(stall);
+        incCurve = stallVTime./total;
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %% Extract segment-wise information
+        % Initialize a structure to store segment-wise results
+        Segments = struct('id', {}, 'cap_no', {}, 'stall_dur', [], 'stalls', [], 'total_caps', []);
+        
+        % Extract information from allDurations cell array
+        for seg_index = 1:numel(allDurations)
+            % Generate cap_no
+            cap_no = num2str(seg_index); % Construct cap_no
+            
+            % Calculate SegDur
+            SegDur = sum(allDurations{seg_index});
+            % Calculate SegRe
+            SegRe = numel(allDurations{seg_index});
+            
+            % Store segment information in structure
+            Segments(seg_index).id = analysis_file(1:4); % Assign id
+            Segments(seg_index).cap_no = cap_no; % Assign cap_no
+            Segments(seg_index).stall_dur = SegDur;
+            Segments(seg_index).stalls = SegRe;
+            Segments(seg_index).total_caps = total;
+        end
+
+        %% Store segment-wise results
+        % Convert structure to table
+        SegTable = struct2table(Segments);
+        
+        % Save the table
+        [~, name, ~] = fileparts(analysis_file);
+        table_filename = [name(1:4) '_segment_table.csv'];
+        table_path = fullfile('C:\Users\olive\OneDrive\Dokumenter\MATLAB\bessBeamCapStall-main\Stalls_T-serie_TPM3\results\result_segment_tables', table_filename);
+        writetable(SegTable, table_path);
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %% ORBC: Storing results in output_structure
+        Result_structure(file_index).id = analysis_file(1:4);
+        Result_structure(file_index).incidence = [incid];
+        Result_structure(file_index).prevalence = [prev];
+        Result_structure(file_index).cumulative_duration = [cumulat];
+        Result_structure(file_index).mean_duration = meanDur;
+        Result_structure(file_index).median_duration = medDur;
+        Result_structure(file_index).total_caps = total;
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %% ORBC: Making/saving the ith iteration table
+        % Construct the single table for this iteration
+        result_table = struct2table(Result_structure(file_index), 'AsArray', true);
+        result_table_name = [analysis_file(1:4) '_data_table.csv']; % Table filename
+        result_table_path = fullfile('C:\Users\olive\OneDrive\Dokumenter\MATLAB\bessBeamCapStall-main\Stalls_T-serie_TPM3\results\result_tables', result_table_name);  % Table file path
+        writetable(result_table, result_table_path);
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %% ORBC: Saving the ith iteration dataset 
+        % Dataset output filename
+        result_dataset_name = [analysis_file(1:4) '_dataset.mat']; % Dataset filename
+        % Dataset output path
+        result_dataset_path = fullfile('C:\Users\olive\OneDrive\Dokumenter\MATLAB\bessBeamCapStall-main\Stalls_T-serie_TPM3\results\result_data', result_dataset_name);  % Dataset file path
+        % Save the output dataset
+        save(result_dataset_path, 'incid', 'prev', 'cumulat','meanDur', 'medDur', 'stallPts','stallMat','allDurations', 'total');
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+      
+    end
+end
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% ORBC: Making/saving compiled table of all iteration's datasets
+% Convert the structure array to a table
+result_comp_table = struct2table(Result_structure);
+
+% Save the table as a CSV file
+result_comp_table_path = 'C:\Users\olive\OneDrive\Dokumenter\MATLAB\bessBeamCapStall-main\Stalls_T-serie_TPM3\results\result_comp_table\output_comp_table.csv';
+writetable(result_comp_table, result_comp_table_path);
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% ORBC: Making/saving compiled table of all iteration's segment tables
+% Define the folder containing segment tables
+result_segment_tables_folder = 'C:\Users\olive\OneDrive\Dokumenter\MATLAB\bessBeamCapStall-main\Stalls_T-serie_TPM3\results\result_segment_tables';
+
+% Get a list of all segment table files
+segment_table_files = dir(fullfile(result_segment_tables_folder, '*.csv'));
+
+% Initialize a cell array to store tables
+all_segment_tables = cell(1, numel(segment_table_files));
+
+% Loop through each segment table file
+for file_index = 1:numel(segment_table_files)
+    % Load the segment table
+    segment_table = readtable(fullfile(result_segment_tables_folder, segment_table_files(file_index).name));
+    
+    % Add it to the cell array
+    all_segment_tables{file_index} = segment_table;
+end
+
+% Concatenate all segment tables vertically
+compiled_segment_table = vertcat(all_segment_tables{:});
+
+% Save the compiled segment table
+compiled_table_path = 'C:\Users\olive\OneDrive\Dokumenter\MATLAB\bessBeamCapStall-main\Stalls_T-serie_TPM3\results\result_segment_comp_table\segment_comp_table.csv';
+writetable(compiled_segment_table, compiled_table_path);
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
